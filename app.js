@@ -7,6 +7,7 @@ import * as dotenv from "dotenv";
 import { ObjectId } from "mongodb";
 import nodemailer from "nodemailer";
 dotenv.config();
+
 const app = express();
 
 const PORT = process.env.PORT;
@@ -17,6 +18,7 @@ const client = new MongoClient(MONGO_URL); // dial
 // Top level await
 await client.connect(); // call
 console.log("Mongo is connected !!!  ");
+
 app.use(cors());
 
 // app.use(express.urlencoded({ extended: false }));
@@ -30,39 +32,69 @@ async function genrateHashedPassword(password) {
   const HashedPassword = await bcrypt.hash(password, salt);
   return HashedPassword;
 }
-app.post("/users/signup", express.json(), async function (request, response) {
-  const { name, email, password } = request.body;
-  const userfromdb = await client
-    .db("b42wd2")
+app.post("/signup", express.json(), async function (request, response) {
+  try{
+    const { username, email, password } = request.body;
+   const userfromdb = await client
+    .db("test")
     .collection("users")
     .findOne({ email: email });
 
   if (userfromdb) {
-    response.json({ status: "user already exists" });
+    response.status(404).send({ message: "user already exists" });
   } else {
     const HashedPassword = await genrateHashedPassword(password);
-    const result = await client.db("b42wd2").collection("users").insertOne({
-      name: name,
+    const result = await client.db("test").collection("users").insertOne({
+      username: username,
       email: email,
       password: HashedPassword,
     });
-    response.json({ status: "succesfully signuP" });
+    response.status(200).send({ message: "succesfully signup" });
+  }
+  }
+  catch (error) {
+    console.log(error)
+  }
+  
+});
+
+export async function getUserByName(email) {
+    return await client.db("test").collection("users").findOne({ email: email });
+  }
+
+
+
+app.post("/login",express.json(), async function (request, response) {
+  const {  email,password } = request.body;
+
+  const userFromDb = await getUserByName(email);
+  console.log(userFromDb);
+
+  if (!userFromDb) {
+    return response.status(404).send({ message: "Invalid credentials" });
+  } else {
+    const storedDbPassword = userFromDb.password;
+    console.log(password)
+    const isPasswordCheck = await bcrypt.compare(password, storedDbPassword);
+    console.log(isPasswordCheck);
+
+    if (isPasswordCheck) {
+      const token = jwt.sign({id: userFromDb._id}, process.env.SECURITY_KEY)
+      response.status(200).send({message: "Successfull Login", token: token})
+      console.log(token)
+    }else{
+      response.status(404).send({message: "Invalid Creds"})
+    }
   }
 });
 
-app.post(
-  "/users/forgot-password",
-  express.json(),
-  async function (request, response) {
+app.post("/forgot-password",express.json(),async function (request, response) {
     const { email } = request.body;
     try {
-      const userfromdb = await client
-        .db("b42wd2")
-        .collection("users")
-        .findOne({ email: email });
+      const userfromdb = await client.db("test").collection("users").findOne({ email: email });
 
       if (!userfromdb) {
-        response.json({ status: "user already exists" });
+        response.status(404).send({ message: "user not found" });
       }
       const secret = process.env.SECURITY_KEY + userfromdb.password;
       const token = jwt.sign(
@@ -76,14 +108,14 @@ app.post(
       let transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
-          user: "Mohanvijay8344@gmail.com",
-          pass: "biknetgulezybmjc",
+          user: process.env.MY_EMAIL,
+          pass: process.env.PASSWORD,
         },
       });
 
       // setup email data with unicode symbols
       let mailOptions = {
-        from: "Mohanvijay8344@gmail.com", // sender address
+        from: process.env.MY_EMAIL, // sender address
         to: userfromdb.email, // list of receivers
         subject: "forgot password reset flow using nodejs and nodemailer", // Subject line
         // plain text body
@@ -104,13 +136,10 @@ app.post(
   }
 );
 
-app.get("/user/reset-password/:id/:token", async function (request, response) {
+app.get("reset-password/:id/:token", async function (request, response) {
   const { id, token } = request.params;
   console.log(request.params);
-  const userfromdb = await client
-    .db("b42wd2")
-    .collection("users")
-    .findOne({ _id: id });
+  const userfromdb = await client.db("test").collection("users").findOne({ _id: id });
 
   if (!userfromdb) {
     response.send({ message: "user not exists" });
@@ -125,16 +154,11 @@ app.get("/user/reset-password/:id/:token", async function (request, response) {
   }
 });
 
-app.post(
-  "/user/reset-password/:id/:token",
-  express.json(),
-  async function (request, response) {
+app.post("reset-password/:id/:token", express.json(), async function (request, response) {
     const { id, token } = request.params;
     const { password } = request.body;
-    const userfromdb = await client
-      .db("b42wd2")
-      .collection("users")
-      .findOne({ _id: new ObjectId(id) });
+    const userfromdb = await client.db("test").collection("users").findOne({ _id: new ObjectId(id) });
+
     if (!userfromdb) {
       response.send({ message: "user not exists" });
     }
@@ -142,19 +166,13 @@ app.post(
     try {
       const verify = jwt.verify(token, secret);
       const HashedPassword = await genrateHashedPassword(password);
-      const result = await client
-        .db("b42wd2")
-        .collection("users")
-
-        .updateOne(
-          {
-            password: userfromdb.password,
-          },
-          {
-            $set: {
-              password: HashedPassword,
-            },
-          }
+      const result = await client.db("test").collection("users").updateOne(
+        {
+          password: userfromdb.password,
+        },
+        {
+          $set: {password: HashedPassword,},
+        }
         );
       response.send({ message: "password updated" });
       console.log(result);
@@ -166,3 +184,4 @@ app.post(
 );
 
 app.listen(PORT, () => console.log(`The server started in: ${PORT} ✨✨`));
+
