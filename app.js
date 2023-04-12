@@ -102,7 +102,7 @@ app.post("/forgot-password",express.json(),async function (request, response) {
         secret,
         { expiresIn: "5m" }
       );
-      const link = `http://localhost:5173/reset-password?id=${userfromdb._id}&token=${token}`;
+      const link = `https://earnest-gecko-f498ee.netlify.app/reset-password?id=${userfromdb._id}&token=${token}`;
 
       // create reusable transporter object using the default SMTP transport
       let transporter = nodemailer.createTransport({
